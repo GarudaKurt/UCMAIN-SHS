@@ -16,24 +16,26 @@ void setup() {
 void loop() {
   if (BTSerial.available()) {
     String received = BTSerial.readStringUntil('\n'); // Read Bluetooth data
-    received.trim(); // Remove any extra spaces or newlines
-    Serial.println("Received: " + received);
+    received.trim(); // Remove extra spaces or newlines
 
-    if (received == "ALARM") {
+    if (received.indexOf("|") >= 0) {
+      String trimmedData = received.substring(0, received.indexOf("|")); // Remove "|"
+      if (trimmedData == "A") {
+        prevTime = millis(); // Reset timeout countdown
+        buzzerStop();
+        Serial.println("Slave is active!");
+      } else {
+        Serial.println("Unexpected Data: " + trimmedData);
+        buzzerStart();
+      }
+    } else if (received == "ALARM") {
       buzzerStart();
       Serial.println("ALERT: Alarm Button Pressed on Slave!");
-      delay(5000);  
+      delay(5000);
       buzzerStop();
-    } else if (received == "active") {
-      prevTime = millis();
-      buzzerStop();
-      Serial.println("Activated!");
     } else {
-      Serial.println("Data from slave: "+ received);
-      Serial.println("De-activated!");
-      buzzerStart();
+      Serial.println("Unrecognized Data: " + received);
     }
-    //BTSerial.println("Onstate"); // Send state update back to slave
   }
 
   if (millis() - prevTime > interval) {
