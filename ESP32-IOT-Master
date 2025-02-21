@@ -1,0 +1,131 @@
+#include <WiFi.h>
+#include <WiFiUdp.h>
+#include <HTTPClient.h>
+#include <ArduinoJson.h>
+#include <FirebaseESP32.h>
+#include <addons/TokenHelper.h>
+#include <addons/RTDBHelper.h>
+
+#define WIFI_SSID "il2wrk"
+#define WIFI_PASSWORD "il2wrk2025"
+#define API_KEY "AIzaSyBjhAuT0ozWZRXIEYXg3x97f6vAHJaKU5c"
+#define DATABASE_URL "https://ucb-smart-irrigation-default-rtdb.firebaseio.com/"
+#define USER_EMAIL "test@gmail.com"
+#define USER_PASSWORD "test123"
+
+const String geolocationAPI = "https://ipinfo.io/json";
+unsigned long prevMillis = 0;
+static int cnt = 0;
+#define BUZZER_PIN 15
+
+FirebaseData fbdo;
+FirebaseAuth auth;
+FirebaseConfig config;
+
+void initFirebase() {
+    Serial.printf("Firebase Client v%s\n\n", FIREBASE_CLIENT_VERSION);
+    
+    config.api_key = API_KEY;
+    auth.user.email = USER_EMAIL;
+    auth.user.password = USER_PASSWORD;
+    config.database_url = DATABASE_URL;
+    config.token_status_callback = tokenStatusCallback;
+
+    Firebase.reconnectWiFi(true);
+    fbdo.setBSSLBufferSize(4096, 1024);
+    Firebase.begin(&config, &auth);
+    Firebase.setDoubleDigits(5);
+}
+
+void readSensor(const String& latitude, const String& longitude, const String& location, const String& city, const String& region) {
+    if (Firebase.ready()) {
+        cnt = cnt +1;
+        Serial.println("[DEBUG] pass here!");
+        if (!Firebase.setString(fbdo, "monitoring/latitude", latitude) ||
+            !Firebase.setString(fbdo, "monitoring/longitude", longitude) ||
+            !Firebase.setString(fbdo, "monitoring/location", location) ||
+            !Firebase.setString(fbdo, "monitoring/city", city) ||
+            !Firebase.setString(fbdo, "monitoring/region", region) || 
+            !Firebase.setInt(fbdo, "monitoring/cntr", cnt)) {
+            Serial.println("Failed to send data to Firebase!");
+        } else {
+            Serial.printf("Sent to Firebase: Loc: %s | City: %s | Region: %s\n", 
+                          location.c_str(), city.c_str(), region.c_str());
+        }
+    }
+}
+
+void buzzerStart() {
+  digitalWrite(BUZZER_PIN, HIGH);
+}
+
+void buzzerStop() {
+  digitalWrite(BUZZER_PIN, LOW);
+}
+
+void setup() {
+  Serial.begin(115200);
+  pinMode(BUZZER_PIN, OUTPUT);
+
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  if (WiFi.waitForConnectResult() != WL_CONNECTED) {
+      Serial.println("WiFi connection failed!");
+      return;
+  } 
+  Serial.printf("WiFi Connected | IP: %s\n", WiFi.localIP().toString().c_str());
+  initFirebase();
+}
+
+void fetchGeoLocation() {
+    if (WiFi.status() != WL_CONNECTED) {
+        Serial.println("WiFi Disconnected!");
+        return;
+    }
+
+    HTTPClient http;
+    http.begin(geolocationAPI);
+    int httpCode = http.GET();
+
+    if (httpCode > 0) {
+        String payload = http.getString();
+        Serial.println("Geolocation Data Received");
+
+        StaticJsonDocument<512> doc;
+        DeserializationError error = deserializeJson(doc, payload);
+        if (!error) {
+          String location = doc["loc"].as<String>();
+          String city = doc["city"].as<String>();
+          String region = doc["region"].as<String>();
+          // Splitting location into latitude and longitude
+          int commaIndex = location.indexOf(',');
+          String latitude = location.substring(0, commaIndex);
+          String longitude = location.substring(commaIndex + 1);
+
+          // Debug output
+          Serial.println("Latitude: " + latitude);
+          Serial.println("Longitude: " + longitude);
+          Serial.println("Location: " + location);
+          Serial.println("City: " + city);
+          Serial.println("Region: " + region);
+          readSensor(latitude, longitude, location, city, region);
+        } else {
+            Serial.println("JSON Parsing Error");
+        }
+    } else {
+        Serial.println("HTTP Request Failed");
+    }
+    http.end();
+}
+
+void loop() {
+  if (millis() - prevMillis > 10000) {
+    prevMillis = millis();
+    fetchGeoLocation();
+  }
+
+  if(millis() - prevMillis > 2000) {
+    prevMillis = millis();
+    
+  }
+
+}
