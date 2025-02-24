@@ -14,7 +14,8 @@
 #define USER_PASSWORD "test123"
 
 const String geolocationAPI = "https://ipinfo.io/json";
-unsigned long prevMillis = 0;
+unsigned long prevGeoMillis = 0;
+unsigned long prevBuzzerMillis = 0;
 static int cnt = 0;
 #define BUZZER_PIN 15
 
@@ -118,14 +119,27 @@ void fetchGeoLocation() {
 }
 
 void loop() {
-  if (millis() - prevMillis > 10000) {
-    prevMillis = millis();
+  if (millis() - prevGeoMillis > 10000) {
+    prevGeoMillis = millis();
     fetchGeoLocation();
   }
 
-  if(millis() - prevMillis > 2000) {
-    prevMillis = millis();
-    
+  if(millis() - prevBuzzerMillis > 2000) {
+    prevBuzzerMillis = millis();
+     if(Firebase.ready()) {
+      String value;
+      bool success = Firebase.getString(fbdo, "monitoring/buzzer");
+      if(success) {
+        value = fbdo.stringData();
+        if(value == "ON") {
+          buzzerStart();
+          delay(10000);
+          buzzerStop();
+          if(!Firebase.setString(fbdo, "monitoring/buzzer", "OFF"))
+            Serial.println("Failed to send data ");
+        }
+      }
+    }
   }
 
 }
