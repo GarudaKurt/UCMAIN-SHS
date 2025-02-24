@@ -6,13 +6,6 @@
 #include <FirebaseESP32.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
-#include "BluetoothSerial.h"
-
-#if !defined(CONFIG_BT_ENABLED) || !defined(CONFIG_BLUEDROID_ENABLED)
-#error Bluetooth is not enabled! Please run `make menuconfig` to and enable it
-#endif
-
-BluetoothSerial SerialBT;
 
 #include <addons/TokenHelper.h>
 #include <addons/RTDBHelper.h>
@@ -30,7 +23,8 @@ BluetoothSerial SerialBT;
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
 
 unsigned long prevMillis = 0;
-const int buttonPin = 15;
+#define buttonPin 15
+#define BUZZER_PIN 16
 bool buttonPressed = false;
 
 FirebaseData fbdo;
@@ -76,9 +70,6 @@ void readSensor() {
       Firebase.getString(fbdo, "monitoring/cntr");
       cntr = fbdo.stringData().toInt();
 
-      Serial.printf("Received from Firebase: Lat: %s | Long: %s | City: %s | Region: %s | Cntr: %s.\n",
-          latitude.c_str(), longitude.c_str(), city.c_str(), region.c_str(), cntr.c_str());
-
       display.clearDisplay();
       display.setCursor(0, 0);
       display.println("Tracking Device:");
@@ -89,6 +80,9 @@ void readSensor() {
       display.println("Cntr: " + cntr);
       display.display();
 
+      Serial.printf("Received from Firebase: Lat: %s | Long: %s | City: %s | Region: %s | Cntr: %s.\n",
+          latitude.c_str(), longitude.c_str(), city.c_str(), region.c_str(), cntr.c_str());
+
     } else {
       Serial.println("Failed to retrieve data from Firebase!");
       display.clearDisplay();
@@ -97,14 +91,12 @@ void readSensor() {
       display.display();
     }
   }
-
 }
+
 
 void setup() {
   Serial.begin(115200);
-
   Wire.begin(21, 22); // SDA, SCL for ESP32
-  SerialBT.begin("SlaveDevice");
 
   if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
     Serial.println(F("SSD1306 allocation failed"));
@@ -128,7 +120,7 @@ void setup() {
   display.setCursor(0, 10);
   display.println("WiFi Connected!");
   display.display();
-
+  
   pinMode(buttonPin, INPUT_PULLUP);
   initFirebase();
 }
@@ -139,18 +131,17 @@ void loop() {
     prevMillis = millis();
     readSensor();
   }
-  
-  if(millis() - prevMillis > 1000) {
-    prevMillis = millis();
-    SerialBT.println("A");
-  }
 
   if (digitalRead(buttonPin) == LOW && !buttonPressed) {
     buttonPressed = true;
-    SerialBT.println("ALARM");
     Serial.println("ALARM Sent!");
     delay(500);
+    if(Firebase.ready()) {
+      if(!Firebase.setString(fbdo, "monitoring/buzzer", "ON"))
+        Serial.println("Failed to send firebase!");  
+    }
   } else if (digitalRead(buttonPin) == HIGH) {
+    Serial.println("ALARM off!");
     buttonPressed = false;
   }
 }
